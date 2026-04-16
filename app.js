@@ -5,6 +5,7 @@
     const revealNodes = document.querySelectorAll('[data-reveal]');
     const testimonialCards = document.querySelectorAll('[data-testimonial]');
     const testimonialDots = document.querySelectorAll('[data-dot]');
+    const testimonialStage = document.querySelector('.testimonial-stage');
     const leadForms = document.querySelectorAll('.lead-form');
     const environmentJump = document.querySelector('[data-env-jump]');
 
@@ -47,8 +48,28 @@
         });
     }
 
+    function syncTestimonialStageHeight() {
+        if (!testimonialStage || !testimonialCards.length) {
+            return;
+        }
+
+        let maxHeight = 0;
+        testimonialCards.forEach((card) => {
+            const cardHeight = card.scrollHeight;
+            if (cardHeight > maxHeight) {
+                maxHeight = cardHeight;
+            }
+        });
+
+        if (maxHeight > 0) {
+            testimonialStage.style.minHeight = `${maxHeight + 36}px`;
+        }
+    }
+
     if (testimonialCards.length && testimonialDots.length) {
         let current = 0;
+        syncTestimonialStageHeight();
+        window.addEventListener('resize', syncTestimonialStageHeight);
 
         testimonialDots.forEach((dot) => {
             dot.addEventListener('click', () => {
