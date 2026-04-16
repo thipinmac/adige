@@ -6,6 +6,11 @@ require __DIR__ . '/site-data.php';
 
 const ADMIN_DEFAULT_PASSWORD = 'admin123-change';
 
+function admin_session_token(): string
+{
+    return hash('sha256', admin_password());
+}
+
 function admin_password(): string
 {
     $value = getenv('ADIGE_ADMIN_PASSWORD');
@@ -14,17 +19,29 @@ function admin_password(): string
 
 function admin_is_logged_in(): bool
 {
-    return isset($_COOKIE['adige_admin_session']) && hash_equals($_COOKIE['adige_admin_session'], sha1(admin_password()));
+    $cookie = (string) ($_COOKIE['adige_admin_session'] ?? '');
+    return $cookie !== '' && hash_equals(admin_session_token(), $cookie);
 }
 
 function admin_set_session_cookie(bool $enabled): void
 {
+    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
+
+    $cookieOptions = [
+        'expires' => $enabled ? time() + 60 * 60 * 10 : time() - 3600,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+
     if ($enabled) {
-        setcookie('adige_admin_session', sha1(admin_password()), time() + 60 * 60 * 10, '/');
+        setcookie('adige_admin_session', admin_session_token(), $cookieOptions);
         return;
     }
 
-    setcookie('adige_admin_session', '', time() - 3600, '/');
+    setcookie('adige_admin_session', '', $cookieOptions);
 }
 
 function admin_json_path(): string
@@ -54,6 +71,24 @@ function admin_save_json(string $jsonText): string
     }
 
     return '';
+}
+
+function admin_list_uploads(): array
+{
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'uploads';
+    if (!is_dir($uploadDir)) {
+        return [];
+    }
+
+    $pattern = $uploadDir . DIRECTORY_SEPARATOR . '*';
+    $files = glob($pattern) ?: [];
+    $imageFiles = array_values(array_filter(
+        $files,
+        static fn(string $path): bool => is_file($path)
+    ));
+
+    sort($imageFiles);
+    return $imageFiles;
 }
 
 
@@ -100,6 +135,7 @@ function admin_handle_upload(): string
 $message = '';
 $error = '';
 $customJson = '{}';
+$uploadFiles = admin_list_uploads();
 
 if (is_file(admin_json_path())) {
     $existing = file_get_contents(admin_json_path());
@@ -128,6 +164,7 @@ $isLoggedIn = admin_is_logged_in();
 if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
 
+    if ($action === 'save_json') {
         $customJson = (string) ($_POST['json_content'] ?? '{}');
         $saveError = admin_save_json($customJson);
         if ($saveError !== '') {
@@ -140,6 +177,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $uploadResult = admin_handle_upload();
         if (str_starts_with($uploadResult, 'OK: ')) {
             $message = 'Upload concluído. Caminho: ' . substr($uploadResult, 4);
+            $uploadFiles = admin_list_uploads();
         } else {
             $error = $uploadResult;
         }
@@ -216,7 +254,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="action" value="save_json">
                     <textarea name="json_content"><?= h($customJson); ?></textarea>
                     <div class="row" style="margin-top: 10px;">
-
+                        <button type="submit">Salvar conteúdo</button>
                     </div>
                 </form>
             </div>
